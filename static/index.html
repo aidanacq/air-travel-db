@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenFlights Explorer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav id="main-nav">
+        <div class="nav-brand">
+            <span class="nav-icon">&#9992;</span>
+            <span class="nav-title">OpenFlights Explorer</span>
+        </div>
+        <div class="nav-links">
+            <a href="#" class="nav-link active" data-tab="search">Search</a>
+            <a href="#" class="nav-link" data-tab="reports">Reports</a>
+            <a href="#" class="nav-link" data-tab="manage">Manage</a>
+            <a href="#" class="nav-link" data-tab="onehop">One-Hop</a>
+            <a href="#" class="nav-link" data-tab="code">Code</a>
+            <a href="#" class="nav-link" data-tab="about">About</a>
+        </div>
+        <button class="nav-toggle" aria-label="Menu">&#9776;</button>
+    </nav>
+
+    <header class="hero">
+        <h1>Explore Global Air Travel Data</h1>
+        <p>Search airlines, airports, and routes from the OpenFlights database</p>
+        <div class="stats-bar">
+            <div class="stat"><span id="stat-airlines" class="stat-num">0</span><span class="stat-label">Airlines</span></div>
+            <div class="stat"><span id="stat-airports" class="stat-num">0</span><span class="stat-label">Airports</span></div>
+            <div class="stat"><span id="stat-routes" class="stat-num">0</span><span class="stat-label">Routes</span></div>
+        </div>
+    </header>
+
+    <main>
+        <!-- ── Search ──────────────────────────────────────── -->
+        <section id="tab-search" class="tab-content active">
+            <div class="section-header"><h2>Entity Lookup</h2></div>
+            <div class="card-grid">
+                <div class="card">
+                    <h3>Airline Lookup</h3>
+                    <div class="input-group">
+                        <input type="text" id="airline-iata" placeholder="IATA Code (e.g. AA)" maxlength="3">
+                        <button onclick="searchAirline()">Search</button>
+                    </div>
+                    <div id="airline-result" class="result-box"></div>
+                </div>
+                <div class="card">
+                    <h3>Airport Lookup</h3>
+                    <div class="input-group">
+                        <input type="text" id="airport-iata" placeholder="IATA Code (e.g. SFO)" maxlength="4">
+                        <button onclick="searchAirport()">Search</button>
+                    </div>
+                    <div id="airport-result" class="result-box"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── Reports ─────────────────────────────────────── -->
+        <section id="tab-reports" class="tab-content">
+            <div class="section-header"><h2>Reports</h2></div>
+            <div class="report-tabs">
+                <button class="report-tab active" data-report="airline-routes">Airline Routes</button>
+                <button class="report-tab" data-report="airport-routes">Airport Routes</button>
+                <button class="report-tab" data-report="all-airlines">All Airlines</button>
+                <button class="report-tab" data-report="all-airports">All Airports</button>
+            </div>
+
+            <div id="report-airline-routes" class="report-panel active">
+                <div class="input-group">
+                    <input type="text" id="report-airline-iata" placeholder="Airline IATA Code (e.g. AA)" maxlength="3">
+                    <button onclick="airlineRoutesReport()">Generate</button>
+                </div>
+                <div id="report-airline-routes-result" class="result-box"></div>
+            </div>
+            <div id="report-airport-routes" class="report-panel">
+                <div class="input-group">
+                    <input type="text" id="report-airport-iata" placeholder="Airport IATA Code (e.g. SFO)" maxlength="4">
+                    <button onclick="airportRoutesReport()">Generate</button>
+                </div>
+                <div id="report-airport-routes-result" class="result-box"></div>
+            </div>
+            <div id="report-all-airlines" class="report-panel">
+                <button onclick="allAirlinesReport()" class="btn-primary">Load All Airlines</button>
+                <div id="report-all-airlines-result" class="result-box"></div>
+            </div>
+            <div id="report-all-airports" class="report-panel">
+                <button onclick="allAirportsReport()" class="btn-primary">Load All Airports</button>
+                <div id="report-all-airports-result" class="result-box"></div>
+            </div>
+        </section>
+
+        <!-- ── Manage ──────────────────────────────────────── -->
+        <section id="tab-manage" class="tab-content">
+            <div class="section-header"><h2>Data Management</h2></div>
+            <p class="note">Changes are in-memory only and reset when the server restarts.</p>
+            <div class="manage-tabs">
+                <button class="manage-tab active" data-entity="airline">Airlines</button>
+                <button class="manage-tab" data-entity="airport">Airports</button>
+                <button class="manage-tab" data-entity="route">Routes</button>
+            </div>
+
+            <div id="manage-airline" class="manage-panel active">
+                <div class="card-grid">
+                    <div class="card">
+                        <h3>Add Airline</h3>
+                        <form id="form-add-airline" onsubmit="addAirline(event)">
+                            <input name="iata" placeholder="IATA Code *" required maxlength="3">
+                            <input name="name" placeholder="Name *" required>
+                            <input name="icao" placeholder="ICAO Code">
+                            <input name="callsign" placeholder="Callsign">
+                            <input name="country" placeholder="Country">
+                            <label class="checkbox-label"><input type="checkbox" name="active" checked> Active</label>
+                            <button type="submit">Add Airline</button>
+                        </form>
+                    </div>
+                    <div class="card">
+                        <h3>Modify Airline</h3>
+                        <form id="form-edit-airline" onsubmit="editAirline(event)">
+                            <input name="iata" placeholder="IATA Code (to identify) *" required maxlength="3">
+                            <input name="name" placeholder="New Name">
+                            <input name="callsign" placeholder="New Callsign">
+                            <input name="country" placeholder="New Country">
+                            <button type="submit">Update</button>
+                        </form>
+                    </div>
+                    <div class="card">
+                        <h3>Remove Airline</h3>
+                        <form id="form-del-airline" onsubmit="deleteAirline(event)">
+                            <input name="iata" placeholder="IATA Code *" required maxlength="3">
+                            <p class="warning">This also removes all routes for this airline.</p>
+                            <button type="submit" class="btn-danger">Remove</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div id="manage-airport" class="manage-panel">
+                <div class="card-grid">
+                    <div class="card">
+                        <h3>Add Airport</h3>
+                        <form id="form-add-airport" onsubmit="addAirport(event)">
+                            <input name="iata" placeholder="IATA Code *" required maxlength="4">
+                            <input name="name" placeholder="Name *" required>
+                            <input name="city" placeholder="City">
+                            <input name="country" placeholder="Country">
+                            <input name="latitude" placeholder="Latitude" type="number" step="any">
+                            <input name="longitude" placeholder="Longitude" type="number" step="any">
+                            <button type="submit">Add Airport</button>
+                        </form>
+                    </div>
+                    <div class="card">
+                        <h3>Modify Airport</h3>
+                        <form id="form-edit-airport" onsubmit="editAirport(event)">
+                            <input name="iata" placeholder="IATA Code (to identify) *" required maxlength="4">
+                            <input name="name" placeholder="New Name">
+                            <input name="city" placeholder="New City">
+                            <input name="country" placeholder="New Country">
+                            <button type="submit">Update</button>
+                        </form>
+                    </div>
+                    <div class="card">
+                        <h3>Remove Airport</h3>
+                        <form id="form-del-airport" onsubmit="deleteAirport(event)">
+                            <input name="iata" placeholder="IATA Code *" required maxlength="4">
+                            <p class="warning">This also removes all routes to/from this airport.</p>
+                            <button type="submit" class="btn-danger">Remove</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div id="manage-route" class="manage-panel">
+                <div class="card-grid">
+                    <div class="card">
+                        <h3>Add Route</h3>
+                        <form id="form-add-route" onsubmit="addRoute(event)">
+                            <input name="airlineId" placeholder="Airline ID *" type="number" required>
+                            <input name="sourceAirportId" placeholder="Source Airport ID *" type="number" required>
+                            <input name="destAirportId" placeholder="Dest Airport ID *" type="number" required>
+                            <input name="stops" placeholder="Stops (default 0)" type="number">
+                            <input name="equipment" placeholder="Equipment (e.g. 737)">
+                            <button type="submit">Add Route</button>
+                        </form>
+                    </div>
+                    <div class="card">
+                        <h3>Remove Route</h3>
+                        <form id="form-del-route" onsubmit="deleteRoute(event)">
+                            <input name="srcId" placeholder="Source Airport ID *" type="number" required>
+                            <input name="dstId" placeholder="Dest Airport ID *" type="number" required>
+                            <input name="airlineId" placeholder="Airline ID *" type="number" required>
+                            <button type="submit" class="btn-danger">Remove</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div id="manage-result" class="result-box"></div>
+        </section>
+
+        <!-- ── One-Hop ─────────────────────────────────────── -->
+        <section id="tab-onehop" class="tab-content">
+            <div class="section-header">
+                <h2>One-Hop Route Finder</h2>
+                <p>Find all single-connection route pairs between two airports</p>
+            </div>
+            <div class="card">
+                <div class="input-group onehop-inputs">
+                    <input type="text" id="onehop-src" placeholder="Source IATA (e.g. SFO)" maxlength="4">
+                    <span class="arrow">&#10230;</span>
+                    <input type="text" id="onehop-dst" placeholder="Dest IATA (e.g. LHR)" maxlength="4">
+                    <button onclick="searchOneHop()">Find Routes</button>
+                </div>
+            </div>
+            <div id="onehop-map" class="map-container"></div>
+            <div id="onehop-result" class="result-box"></div>
+        </section>
+
+        <!-- ── Code ────────────────────────────────────────── -->
+        <section id="tab-code" class="tab-content">
+            <div class="section-header"><h2>Source Code</h2></div>
+            <button onclick="loadCode()" class="btn-primary">Load C++ Source Code</button>
+            <div id="code-result" class="code-container"></div>
+        </section>
+
+        <!-- ── About ───────────────────────────────────────── -->
+        <section id="tab-about" class="tab-content">
+            <div class="section-header"><h2>About This Project</h2></div>
+            <div class="card-grid about-grid">
+                <div class="card">
+                    <h3>&#9992; Project Info</h3>
+                    <p>A full-featured web application providing a front-end interface for the OpenFlights Air Travel Database, built entirely in C++ with a modern HTML/CSS/JS frontend.</p>
+                    <p>This is the Capstone project for <strong>CIS 22C Honor Cohort</strong>.</p>
+                </div>
+                <div class="card">
+                    <h3>&#128100; Student</h3>
+                    <div id="student-info">Loading...</div>
+                </div>
+                <div class="card">
+                    <h3>&#128202; Data Source</h3>
+                    <p>Data from <a href="https://openflights.org/data.php" target="_blank">OpenFlights.org</a>, providing copyright-free CSV files for Airlines, Airports, and directional Routes.</p>
+                    <ul>
+                        <li><span id="about-airlines">0</span> Airlines</li>
+                        <li><span id="about-airports">0</span> Airports</li>
+                        <li><span id="about-routes">0</span> Routes</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>&#128736; Tech Stack</h3>
+                    <ul>
+                        <li><strong>Backend:</strong> C++17</li>
+                        <li><strong>HTTP Server:</strong> cpp-httplib</li>
+                        <li><strong>JSON:</strong> nlohmann/json</li>
+                        <li><strong>Frontend:</strong> HTML5, CSS3, Vanilla JS</li>
+                        <li><strong>Maps:</strong> Leaflet.js + OpenStreetMap</li>
+                        <li><strong>Highlighting:</strong> highlight.js</li>
+                    </ul>
+                </div>
+                <div class="card full-width">
+                    <h3>&#128218; Data Structures Documentation</h3>
+                    <div class="doc-section">
+                        <h4>1. Collection Data Structures</h4>
+                        <ul>
+                            <li><strong>Airlines:</strong> <code>std::unordered_map&lt;int, Airline&gt;</code> for O(1) lookup by OpenFlights ID, plus <code>std::unordered_map&lt;std::string, int&gt;</code> mapping IATA codes to IDs.</li>
+                            <li><strong>Airports:</strong> Same dual-map structure as Airlines &mdash; <code>std::unordered_map&lt;int, Airport&gt;</code> and <code>std::unordered_map&lt;std::string, int&gt;</code> for IATA indexing.</li>
+                            <li><strong>Routes:</strong> <code>std::vector&lt;Route&gt;</code> as the primary collection, with three <code>std::unordered_map&lt;int, std::vector&lt;size_t&gt;&gt;</code> indices mapping airline IDs, source airport IDs, and destination airport IDs to vectors of route indices.</li>
+                        </ul>
+                        <h4>2. Route Linkage</h4>
+                        <p>Routes reference Airlines and Airports via their <strong>numeric OpenFlights IDs</strong> (integers). Each Route stores <code>airlineId</code>, <code>sourceAirportId</code>, and <code>destAirportId</code>. The route index maps provide O(1) access to all routes associated with a given airline or airport.</p>
+                        <h4>3. Airline Report Algorithm</h4>
+                        <p>Given airline IATA code &ldquo;XX&rdquo;:</p>
+                        <ol>
+                            <li>Look up the airline ID via <code>_airlineByIata["XX"]</code> &mdash; O(1).</li>
+                            <li>Retrieve all route indices from <code>_routesByAirlineId[airlineId]</code> &mdash; O(1).</li>
+                            <li>For each route, increment a counter in a <code>std::map&lt;int, int&gt;</code> for both source and destination airport IDs &mdash; O(R) where R = number of routes for this airline.</li>
+                            <li>Sort the airport-count pairs by count descending &mdash; O(A log A) where A = unique airports.</li>
+                            <li>For each entry, look up the Airport entity and assemble the JSON response.</li>
+                        </ol>
+                        <h4>4. Scalability Analysis</h4>
+                        <ul>
+                            <li><strong>1000&times; record size:</strong> Switch from storing full structs to using <code>std::shared_ptr</code> with memory-mapped backing store; add LRU cache for hot entities.</li>
+                            <li><strong>1000&times; entity count:</strong> Replace <code>unordered_map</code> with a B-tree or LSM-tree backed store (e.g., RocksDB); add pagination to all reports.</li>
+                            <li><strong>1000&times; routes:</strong> Pre-compute materialized views for common reports; use adjacency lists with compressed sparse row format instead of flat vectors.</li>
+                            <li><strong>Ratio change to 1:100 writes:</strong> Replace <code>std::vector</code>-based route storage with a balanced BST (<code>std::set</code>) or skip list for O(log n) insert/delete; use write-ahead logging; replace full index rebuilds with incremental index updates.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card full-width">
+                    <h3>&#128231; Contact</h3>
+                    <form class="contact-form" onsubmit="event.preventDefault(); showToast('Message sent (demo only)', 'success')">
+                        <input placeholder="Your Name" required>
+                        <input placeholder="Your Email" type="email" required>
+                        <textarea placeholder="Message" rows="4" required></textarea>
+                        <button type="submit">Send Message</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 OpenFlights Explorer &mdash; CIS 22C Capstone Project &mdash; Data from <a href="https://openflights.org" target="_blank">OpenFlights.org</a></p>
+    </footer>
+
+    <div id="toast-container"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cpp.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

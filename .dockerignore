@@ -1,0 +1,11 @@
+build/
+*.exe
+*.obj
+*.o
+.cursor/
+docs/
+agent-transcripts/
+terminals/
+w64devkit/
+*.zip
+*.7z
