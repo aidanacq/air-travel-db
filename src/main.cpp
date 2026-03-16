@@ -207,6 +207,23 @@ int main() {
         }
     });
 
+    svr.Put("/api/route", [&](const httplib::Request& req, httplib::Response& res) {
+        setCors(res);
+        try {
+            auto data = json::parse(req.body);
+            int srcId = data.value("sourceAirportId", -1);
+            int dstId = data.value("destAirportId", -1);
+            int airlineId = data.value("airlineId", -1);
+            auto updates = data.value("updates", json::object());
+            auto result = db.modifyRoute(srcId, dstId, airlineId, updates);
+            res.status = result.contains("error") ? 404 : 200;
+            res.set_content(result.dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json{{"error", e.what()}}.dump(), "application/json");
+        }
+    });
+
     svr.Delete("/api/route", [&](const httplib::Request& req, httplib::Response& res) {
         setCors(res);
         int srcId = std::stoi(req.get_param_value("srcId"));

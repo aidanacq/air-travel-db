@@ -526,6 +526,51 @@ json DataManager::insertRoute(const json& data) {
     return json{{"success", true}, {"route", r.toJson()}};
 }
 
+json DataManager::modifyRoute(int sourceAirportId, int destAirportId, int airlineId, const json& data) {
+    std::lock_guard<std::mutex> lock(_mutex);
+    auto it = std::find_if(_routes.begin(), _routes.end(),
+        [&](const Route& r) {
+            return r.sourceAirportId == sourceAirportId &&
+                   r.destAirportId == destAirportId &&
+                   r.airlineId == airlineId;
+        });
+    if (it == _routes.end()) {
+        return json{{"error", "Route not found"}};
+    }
+
+    if (data.contains("airlineId")) {
+        int newAirlineId = data["airlineId"].get<int>();
+        if (newAirlineId > 0 && !_airlines.count(newAirlineId)) {
+            return json{{"error", "Invalid new airline ID"}, {"airlineId", newAirlineId}};
+        }
+        it->airlineId = newAirlineId;
+        it->airlineIata = (newAirlineId > 0 && _airlines.count(newAirlineId))
+            ? _airlines[newAirlineId].iata : "";
+    }
+    if (data.contains("sourceAirportId")) {
+        int newSrcId = data["sourceAirportId"].get<int>();
+        if (!_airports.count(newSrcId)) {
+            return json{{"error", "Invalid new source airport ID"}, {"sourceAirportId", newSrcId}};
+        }
+        it->sourceAirportId = newSrcId;
+        it->sourceAirportIata = _airports[newSrcId].iata;
+    }
+    if (data.contains("destAirportId")) {
+        int newDstId = data["destAirportId"].get<int>();
+        if (!_airports.count(newDstId)) {
+            return json{{"error", "Invalid new destination airport ID"}, {"destAirportId", newDstId}};
+        }
+        it->destAirportId = newDstId;
+        it->destAirportIata = _airports[newDstId].iata;
+    }
+    if (data.contains("stops")) it->stops = data["stops"].get<int>();
+    if (data.contains("codeshare")) it->codeshare = data["codeshare"].get<bool>();
+    if (data.contains("equipment")) it->equipment = data["equipment"].get<std::string>();
+
+    rebuildRouteIndices();
+    return json{{"success", true}, {"route", it->toJson()}};
+}
+
 json DataManager::removeRoute(int sourceAirportId, int destAirportId, int airlineId) {
     std::lock_guard<std::mutex> lock(_mutex);
     auto it = std::find_if(_routes.begin(), _routes.end(),

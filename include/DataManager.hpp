@@ -29,6 +29,7 @@ public:
     json removeAirport(const std::string& iata);
 
     json insertRoute(const json& data);
+    json modifyRoute(int sourceAirportId, int destAirportId, int airlineId, const json& data);
     json removeRoute(int sourceAirportId, int destAirportId, int airlineId);
 
     json oneHopReport(const std::string& sourceIata, const std::string& destIata);

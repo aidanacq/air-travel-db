@@ -306,6 +306,26 @@ async function addRoute(e) {
     e.target.reset();
 }
 
+async function editRoute(e) {
+    e.preventDefault();
+    const d = formData(e.target);
+    const body = {
+        sourceAirportId: parseInt(d.sourceAirportId),
+        destAirportId: parseInt(d.destAirportId),
+        airlineId: parseInt(d.airlineId),
+        updates: {}
+    };
+    if (d.newAirlineId) body.updates.airlineId = parseInt(d.newAirlineId);
+    if (d.newSourceAirportId) body.updates.sourceAirportId = parseInt(d.newSourceAirportId);
+    if (d.newDestAirportId) body.updates.destAirportId = parseInt(d.newDestAirportId);
+    if (d.stops) body.updates.stops = parseInt(d.stops);
+    if (d.equipment) body.updates.equipment = d.equipment;
+    const { data } = await api('PUT', '/api/route', body);
+    if (data.error) { showToast(data.error, 'error'); return; }
+    showToast('Route updated', 'success');
+    e.target.reset();
+}
+
 async function deleteRoute(e) {
     e.preventDefault();
     const d = formData(e.target);

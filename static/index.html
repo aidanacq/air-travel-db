@@ -189,6 +189,22 @@
                         </form>
                     </div>
                     <div class="card">
+                        <h3>Modify Route</h3>
+                        <form id="form-edit-route" onsubmit="editRoute(event)">
+                            <p class="note">Identify the route to modify:</p>
+                            <input name="sourceAirportId" placeholder="Source Airport ID *" type="number" required>
+                            <input name="destAirportId" placeholder="Dest Airport ID *" type="number" required>
+                            <input name="airlineId" placeholder="Airline ID *" type="number" required>
+                            <p class="note">New values (leave blank to keep current):</p>
+                            <input name="newAirlineId" placeholder="New Airline ID" type="number">
+                            <input name="newSourceAirportId" placeholder="New Source Airport ID" type="number">
+                            <input name="newDestAirportId" placeholder="New Dest Airport ID" type="number">
+                            <input name="stops" placeholder="New Stops" type="number">
+                            <input name="equipment" placeholder="New Equipment">
+                            <button type="submit">Update Route</button>
+                        </form>
+                    </div>
+                    <div class="card">
                         <h3>Remove Route</h3>
                         <form id="form-del-route" onsubmit="deleteRoute(event)">
                             <input name="srcId" placeholder="Source Airport ID *" type="number" required>
