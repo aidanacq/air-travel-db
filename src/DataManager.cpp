@@ -728,7 +728,7 @@ json DataManager::findRoutes(const std::string& srcIata, const std::string& dstI
                              const std::string& airlineIata,
                              const std::string& backupAirline1Iata,
                              const std::string& backupAirline2Iata,
-                             int maxStops) {
+                             int maxStops, bool exactStops, int numRoutes) {
     std::lock_guard<std::mutex> lock(_mutex);
 
     auto srcIt = _airportByIata.find(srcIata);
@@ -748,146 +748,221 @@ json DataManager::findRoutes(const std::string& srcIata, const std::string& dstI
     if (maxStops < 0 || maxStops > 5)
         return json{{"error", "Number of stops must be between 0 and 5."}};
 
-    auto alIt = _airlineByIata.find(airlineIata);
-    if (alIt == _airlineByIata.end())
-        return json{{"error", "Primary airline '" + airlineIata + "' not found in the database."}};
+    if (numRoutes < 1 || numRoutes > 10)
+        return json{{"error", "Number of routes must be between 1 and 10."}};
 
-    struct AllowedAirline { int id; std::string iata; std::string name; };
-    std::vector<AllowedAirline> allowedAirlines;
-    allowedAirlines.push_back({alIt->second, airlineIata, _airlines[alIt->second].name});
+    bool anyAirline = airlineIata.empty();
 
-    if (!backupAirline1Iata.empty()) {
-        auto ba1 = _airlineByIata.find(backupAirline1Iata);
-        if (ba1 == _airlineByIata.end())
-            return json{{"error", "Backup airline 1 '" + backupAirline1Iata + "' not found in the database."}};
-        allowedAirlines.push_back({ba1->second, backupAirline1Iata, _airlines[ba1->second].name});
+    struct AirlineInfo { int id; std::string iata; std::string name; };
+    std::vector<AirlineInfo> specifiedAirlines;
+
+    if (!anyAirline) {
+        auto alIt = _airlineByIata.find(airlineIata);
+        if (alIt == _airlineByIata.end())
+            return json{{"error", "Primary airline '" + airlineIata + "' not found in the database."}};
+        specifiedAirlines.push_back({alIt->second, airlineIata, _airlines[alIt->second].name});
+
+        if (!backupAirline1Iata.empty()) {
+            auto ba1 = _airlineByIata.find(backupAirline1Iata);
+            if (ba1 == _airlineByIata.end())
+                return json{{"error", "Backup airline 1 '" + backupAirline1Iata + "' not found in the database."}};
+            specifiedAirlines.push_back({ba1->second, backupAirline1Iata, _airlines[ba1->second].name});
+        }
+
+        if (!backupAirline2Iata.empty()) {
+            auto ba2 = _airlineByIata.find(backupAirline2Iata);
+            if (ba2 == _airlineByIata.end())
+                return json{{"error", "Backup airline 2 '" + backupAirline2Iata + "' not found in the database."}};
+            specifiedAirlines.push_back({ba2->second, backupAirline2Iata, _airlines[ba2->second].name});
+        }
     }
 
-    if (!backupAirline2Iata.empty()) {
-        auto ba2 = _airlineByIata.find(backupAirline2Iata);
-        if (ba2 == _airlineByIata.end())
-            return json{{"error", "Backup airline 2 '" + backupAirline2Iata + "' not found in the database."}};
-        allowedAirlines.push_back({ba2->second, backupAirline2Iata, _airlines[ba2->second].name});
-    }
+    struct EdgeInfo { std::string alIata; std::string alName; };
+    using AdjMap = std::unordered_map<int, std::unordered_map<int, EdgeInfo>>;
 
-    // Build adjacency: src -> dst -> best airline preference index
-    std::unordered_map<int, std::unordered_map<int, int>> adj;
-    for (int aIdx = 0; aIdx < static_cast<int>(allowedAirlines.size()); ++aIdx) {
-        int airlineId = allowedAirlines[aIdx].id;
-        auto rit = _routesByAirlineId.find(airlineId);
-        if (rit == _routesByAirlineId.end()) continue;
-        for (size_t routeIdx : rit->second) {
-            const auto& route = _routes[routeIdx];
+    auto buildAdjByAirlines = [&](const std::vector<int>& airlineIds) -> AdjMap {
+        AdjMap adj;
+        for (int airlineId : airlineIds) {
+            auto rit = _routesByAirlineId.find(airlineId);
+            if (rit == _routesByAirlineId.end()) continue;
+            for (size_t routeIdx : rit->second) {
+                const auto& route = _routes[routeIdx];
+                if (route.stops != 0) continue;
+                int s = route.sourceAirportId;
+                int d = route.destAirportId;
+                if (s <= 0 || d <= 0) continue;
+                if (_airports.find(s) == _airports.end() || _airports.find(d) == _airports.end()) continue;
+                if (adj[s].find(d) == adj[s].end()) {
+                    std::string name = "Unknown";
+                    auto ait = _airlines.find(route.airlineId);
+                    if (ait != _airlines.end()) name = ait->second.name;
+                    adj[s][d] = {route.airlineIata, name};
+                }
+            }
+        }
+        return adj;
+    };
+
+    auto buildAdjAll = [&]() -> AdjMap {
+        AdjMap adj;
+        for (const auto& route : _routes) {
             if (route.stops != 0) continue;
             int s = route.sourceAirportId;
             int d = route.destAirportId;
             if (s <= 0 || d <= 0) continue;
             if (_airports.find(s) == _airports.end() || _airports.find(d) == _airports.end()) continue;
             if (adj[s].find(d) == adj[s].end()) {
-                adj[s][d] = aIdx;
+                std::string name = "Unknown";
+                if (route.airlineId > 0) {
+                    auto ait = _airlines.find(route.airlineId);
+                    if (ait != _airlines.end()) name = ait->second.name;
+                }
+                adj[s][d] = {route.airlineIata, name};
             }
         }
-    }
-
-    bool srcHasRoutes = adj.find(srcId) != adj.end();
-    bool dstHasIncoming = false;
-    for (const auto& [s, dests] : adj) {
-        if (dests.find(dstId) != dests.end()) { dstHasIncoming = true; break; }
-    }
-
-    if (!srcHasRoutes) {
-        return json{{"error", "None of the specified airline(s) operate any routes departing from " +
-                     srcIata + " (" + _airports[srcId].name + ")."}};
-    }
-    if (!dstHasIncoming) {
-        return json{{"error", "None of the specified airline(s) operate any routes arriving at " +
-                     dstIata + " (" + _airports[dstId].name + ")."}};
-    }
-
-    if (maxStops == 0) {
-        auto srcAdj = adj.find(srcId);
-        if (srcAdj == adj.end() || srcAdj->second.find(dstId) == srcAdj->second.end()) {
-            std::string airlineList = allowedAirlines[0].name + " (" + allowedAirlines[0].iata + ")";
-            for (size_t i = 1; i < allowedAirlines.size(); ++i)
-                airlineList += ", " + allowedAirlines[i].name + " (" + allowedAirlines[i].iata + ")";
-            return json{{"error", "No direct flights between " + srcIata + " and " + dstIata +
-                         " with " + airlineList +
-                         ". Try increasing the number of stops or adding backup airlines."}};
-        }
-    }
-
-    struct PathState {
-        double totalDist;
-        int currentAirport;
-        std::vector<int> airports;
-        std::vector<int> airlineIndices;
-        std::vector<double> legDists;
+        return adj;
     };
 
-    auto cmp = [](const PathState& a, const PathState& b) { return a.totalDist > b.totalDist; };
-    std::priority_queue<PathState, std::vector<PathState>, decltype(cmp)> pq(cmp);
+    struct FoundPath {
+        std::vector<int> airportIds;
+        std::vector<std::string> legAlIatas;
+        std::vector<std::string> legAlNames;
+        std::vector<double> legDists;
+        double totalDist;
+    };
 
-    std::unordered_map<int, int> settleCount;
-    constexpr int K = 5;
     int maxLegs = maxStops + 1;
 
-    pq.push({0.0, srcId, {srcId}, {}, {}});
+    auto runSearch = [&](const AdjMap& adj, int k) -> std::vector<FoundPath> {
+        struct PState {
+            double totalDist;
+            int cur;
+            std::vector<int> airports;
+            std::vector<std::string> alIatas;
+            std::vector<std::string> alNames;
+            std::vector<double> dists;
+        };
 
-    std::vector<PathState> results;
+        auto cmp = [](const PState& a, const PState& b) { return a.totalDist > b.totalDist; };
+        std::priority_queue<PState, std::vector<PState>, decltype(cmp)> pq(cmp);
+        std::unordered_map<int, int> settleCount;
 
-    while (!pq.empty() && static_cast<int>(results.size()) < K) {
-        auto state = pq.top();
-        pq.pop();
+        pq.push({0.0, srcId, {srcId}, {}, {}, {}});
+        std::vector<FoundPath> results;
+        int iterations = 0;
 
-        int cur = state.currentAirport;
+        while (!pq.empty() && static_cast<int>(results.size()) < k && iterations++ < 200000) {
+            auto st = pq.top();
+            pq.pop();
 
-        settleCount[cur]++;
-        if (settleCount[cur] > K + 5) continue;
+            int legs = static_cast<int>(st.alIatas.size());
 
-        if (cur == dstId) {
-            results.push_back(state);
-            continue;
-        }
-
-        if (static_cast<int>(state.airlineIndices.size()) >= maxLegs) continue;
-
-        auto adjIt = adj.find(cur);
-        if (adjIt == adj.end()) continue;
-
-        const auto& curAirport = _airports[cur];
-
-        for (const auto& [nextId, aIdx] : adjIt->second) {
-            bool inPath = false;
-            for (int apId : state.airports) {
-                if (apId == nextId) { inPath = true; break; }
+            if (st.cur == dstId) {
+                bool accept = exactStops ? (legs == maxLegs) : (legs > 0);
+                if (accept)
+                    results.push_back({st.airports, st.alIatas, st.alNames, st.dists, st.totalDist});
+                continue;
             }
-            if (inPath) continue;
 
-            const auto& nextAirport = _airports[nextId];
-            double dist = haversine(curAirport.latitude, curAirport.longitude,
-                                    nextAirport.latitude, nextAirport.longitude);
+            settleCount[st.cur]++;
+            if (settleCount[st.cur] > k + 15) continue;
+            if (legs >= maxLegs) continue;
 
-            PathState next;
-            next.totalDist = state.totalDist + dist;
-            next.currentAirport = nextId;
-            next.airports = state.airports;
-            next.airports.push_back(nextId);
-            next.airlineIndices = state.airlineIndices;
-            next.airlineIndices.push_back(aIdx);
-            next.legDists = state.legDists;
-            next.legDists.push_back(dist);
+            auto adjIt = adj.find(st.cur);
+            if (adjIt == adj.end()) continue;
+            const auto& curAp = _airports[st.cur];
 
-            pq.push(std::move(next));
+            for (const auto& [nextId, edge] : adjIt->second) {
+                bool inPath = false;
+                for (int apId : st.airports) {
+                    if (apId == nextId) { inPath = true; break; }
+                }
+                if (inPath) continue;
+
+                const auto& nextAp = _airports[nextId];
+                double dist = haversine(curAp.latitude, curAp.longitude,
+                                        nextAp.latitude, nextAp.longitude);
+                PState next;
+                next.totalDist = st.totalDist + dist;
+                next.cur = nextId;
+                next.airports = st.airports;
+                next.airports.push_back(nextId);
+                next.alIatas = st.alIatas;
+                next.alIatas.push_back(edge.alIata);
+                next.alNames = st.alNames;
+                next.alNames.push_back(edge.alName);
+                next.dists = st.dists;
+                next.dists.push_back(dist);
+                pq.push(std::move(next));
+            }
+        }
+        return results;
+    };
+
+    std::vector<FoundPath> finalResults;
+
+    if (anyAirline) {
+        AdjMap adj = buildAdjAll();
+        if (adj.find(srcId) == adj.end())
+            return json{{"error", "No routes depart from " + srcIata + " (" + _airports[srcId].name + ") in the database."}};
+
+        bool dstReachable = false;
+        for (const auto& [s, dests] : adj) {
+            if (dests.find(dstId) != dests.end()) { dstReachable = true; break; }
+        }
+        if (!dstReachable)
+            return json{{"error", "No routes arrive at " + dstIata + " (" + _airports[dstId].name + ") in the database."}};
+
+        finalResults = runSearch(adj, numRoutes);
+    } else {
+        std::set<std::vector<int>> seenPaths;
+
+        for (int tier = 0; tier < static_cast<int>(specifiedAirlines.size()) &&
+             static_cast<int>(finalResults.size()) < numRoutes; ++tier) {
+            std::vector<int> tierIds;
+            for (int i = 0; i <= tier; ++i)
+                tierIds.push_back(specifiedAirlines[i].id);
+
+            AdjMap adj = buildAdjByAirlines(tierIds);
+
+            int searchK = numRoutes + static_cast<int>(seenPaths.size());
+            auto tierResults = runSearch(adj, searchK);
+
+            for (const auto& r : tierResults) {
+                if (static_cast<int>(finalResults.size()) >= numRoutes) break;
+                if (seenPaths.find(r.airportIds) == seenPaths.end()) {
+                    seenPaths.insert(r.airportIds);
+                    finalResults.push_back(r);
+                }
+            }
         }
     }
 
-    if (results.empty()) {
-        std::string airlineList = allowedAirlines[0].name + " (" + allowedAirlines[0].iata + ")";
-        for (size_t i = 1; i < allowedAirlines.size(); ++i)
-            airlineList += ", " + allowedAirlines[i].name + " (" + allowedAirlines[i].iata + ")";
+    if (finalResults.empty()) {
+        std::string stopsDesc = exactStops
+            ? ("exactly " + std::to_string(maxStops))
+            : ("up to " + std::to_string(maxStops));
+        std::string suggestion = exactStops
+            ? "Try switching to 'At most' mode, increasing the number of stops, or adding backup airlines."
+            : "Try increasing the number of stops or adding backup airlines.";
+
+        if (anyAirline) {
+            return json{{"error", "No routes found between " + srcIata + " and " + dstIata +
+                         " with " + stopsDesc + " stop(s) using any airline. " +
+                         (exactStops ? "Try switching to 'At most' mode or adjusting the number of stops."
+                                     : "Try increasing the number of stops.")}};
+        }
+
+        std::string alList = specifiedAirlines[0].name + " (" + specifiedAirlines[0].iata + ")";
+        for (size_t i = 1; i < specifiedAirlines.size(); ++i)
+            alList += ", " + specifiedAirlines[i].name + " (" + specifiedAirlines[i].iata + ")";
+
+        if (maxStops == 0) {
+            return json{{"error", "No direct flights between " + srcIata + " and " + dstIata +
+                         " with " + alList + ". " + suggestion}};
+        }
         return json{{"error", "No routes found between " + srcIata + " and " + dstIata +
-                     " with up to " + std::to_string(maxStops) + " stop(s) using " + airlineList +
-                     ". Try increasing the number of stops or adding backup airlines."}};
+                     " with " + stopsDesc + " stop(s) using " + alList + ". " + suggestion}};
     }
 
     const auto& srcAirport = _airports[srcId];
@@ -896,25 +971,23 @@ json DataManager::findRoutes(const std::string& srcIata, const std::string& dstI
                                   dstAirport.latitude, dstAirport.longitude);
 
     json airlinesJson = json::array();
-    for (const auto& al : allowedAirlines) {
-        airlinesJson.push_back({{"iata", al.iata}, {"name", al.name}, {"id", al.id}});
+    if (!anyAirline) {
+        for (const auto& al : specifiedAirlines)
+            airlinesJson.push_back({{"iata", al.iata}, {"name", al.name}, {"id", al.id}});
     }
 
     json routesJson = json::array();
-    for (int r = 0; r < static_cast<int>(results.size()); ++r) {
-        const auto& path = results[r];
+    for (int r = 0; r < static_cast<int>(finalResults.size()); ++r) {
+        const auto& path = finalResults[r];
 
         json airportsJson = json::array();
-        for (int apId : path.airports) {
-            const auto& ap = _airports[apId];
-            airportsJson.push_back(ap.toJson());
-        }
+        for (int apId : path.airportIds)
+            airportsJson.push_back(_airports[apId].toJson());
 
         json legsJson = json::array();
-        for (int l = 0; l < static_cast<int>(path.airlineIndices.size()); ++l) {
-            int fromId = path.airports[l];
-            int toId = path.airports[l + 1];
-            int aIdx = path.airlineIndices[l];
+        for (int l = 0; l < static_cast<int>(path.legAlIatas.size()); ++l) {
+            int fromId = path.airportIds[l];
+            int toId = path.airportIds[l + 1];
             const auto& fromAp = _airports[fromId];
             const auto& toAp = _airports[toId];
             legsJson.push_back({
@@ -922,8 +995,8 @@ json DataManager::findRoutes(const std::string& srcIata, const std::string& dstI
                 {"fromLat", fromAp.latitude}, {"fromLon", fromAp.longitude},
                 {"toIata", toAp.iata}, {"toName", toAp.name},
                 {"toLat", toAp.latitude}, {"toLon", toAp.longitude},
-                {"airlineIata", allowedAirlines[aIdx].iata},
-                {"airlineName", allowedAirlines[aIdx].name},
+                {"airlineIata", path.legAlIatas[l]},
+                {"airlineName", path.legAlNames[l]},
                 {"distance", std::round(path.legDists[l] * 10.0) / 10.0}
             });
         }
@@ -933,7 +1006,7 @@ json DataManager::findRoutes(const std::string& srcIata, const std::string& dstI
             {"airports", airportsJson},
             {"legs", legsJson},
             {"totalDistance", std::round(path.totalDist * 10.0) / 10.0},
-            {"stops", static_cast<int>(path.airlineIndices.size()) - 1}
+            {"stops", static_cast<int>(path.legAlIatas.size()) - 1}
         });
     }
 
@@ -943,8 +1016,10 @@ json DataManager::findRoutes(const std::string& srcIata, const std::string& dstI
         {"directDistance", std::round(directDist * 10.0) / 10.0},
         {"airlines", airlinesJson},
         {"routes", routesJson},
-        {"totalRoutes", results.size()},
-        {"maxStopsUsed", maxStops}
+        {"totalRoutes", finalResults.size()},
+        {"maxStopsUsed", maxStops},
+        {"exactStops", exactStops},
+        {"anyAirline", anyAirline}
     };
 }
 

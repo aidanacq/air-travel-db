@@ -441,7 +441,19 @@ let routesMapLayers = [];
 let routesSummaryHtml = '';
 let routesDataCache = null;
 
-const ROUTE_COLORS = ['#58a6ff', '#3fb950', '#e3b341', '#f85149', '#bc8cff'];
+const ROUTE_COLORS = ['#58a6ff', '#3fb950', '#e3b341', '#f85149', '#bc8cff',
+                      '#f0883e', '#a5d6ff', '#7ee787', '#d2a8ff', '#ff7b72'];
+
+function toggleAnyAirline() {
+    const checked = document.getElementById('routes-any-airline').checked;
+    const row = document.getElementById('routes-airline-row');
+    row.style.display = checked ? 'none' : '';
+    if (checked) {
+        document.getElementById('routes-airline').value = '';
+        document.getElementById('routes-backup1').value = '';
+        document.getElementById('routes-backup2').value = '';
+    }
+}
 
 function initRoutesMap() {
     if (routesMap) return;
@@ -462,14 +474,17 @@ function clearRoutesMapLayers() {
 async function searchRoutes() {
     const src = document.getElementById('routes-src').value.trim().toUpperCase();
     const dst = document.getElementById('routes-dst').value.trim().toUpperCase();
-    const airline = document.getElementById('routes-airline').value.trim().toUpperCase();
-    const backup1 = document.getElementById('routes-backup1').value.trim().toUpperCase();
-    const backup2 = document.getElementById('routes-backup2').value.trim().toUpperCase();
+    const anyAirline = document.getElementById('routes-any-airline').checked;
+    const airline = anyAirline ? '' : document.getElementById('routes-airline').value.trim().toUpperCase();
+    const backup1 = anyAirline ? '' : document.getElementById('routes-backup1').value.trim().toUpperCase();
+    const backup2 = anyAirline ? '' : document.getElementById('routes-backup2').value.trim().toUpperCase();
     const stops = document.getElementById('routes-stops').value || '0';
+    const stopMode = document.getElementById('routes-stop-mode').value;
+    const routeCount = document.getElementById('routes-count').value || '5';
     const el = document.getElementById('routes-result');
 
     if (!src || !dst) { showError(el, 'Enter both source and destination airport IATA codes.'); return; }
-    if (!airline) { showError(el, 'Enter a primary airline IATA code.'); return; }
+    if (!anyAirline && !airline) { showError(el, 'Enter a primary airline IATA code, or check "Any Airline".'); return; }
 
     const stopsNum = parseInt(stops);
     if (isNaN(stopsNum) || stopsNum < 0 || stopsNum > 5) {
@@ -477,24 +492,34 @@ async function searchRoutes() {
         return;
     }
 
-    if (src === dst) { showError(el, 'Source and destination airports must be different.'); return; }
-
-    if (backup2 && !backup1) {
-        showError(el, 'Please specify Backup Airline 1 before Backup Airline 2.');
+    const countNum = parseInt(routeCount);
+    if (isNaN(countNum) || countNum < 1 || countNum > 10) {
+        showError(el, 'Number of routes must be between 1 and 10.');
         return;
     }
 
-    if ((backup1 && backup1 === airline) || (backup2 && backup2 === airline) ||
-        (backup1 && backup2 && backup1 === backup2)) {
-        showError(el, 'Airline codes must be unique — no duplicates between primary and backup airlines.');
-        return;
+    if (src === dst) { showError(el, 'Source and destination airports must be different.'); return; }
+
+    if (!anyAirline) {
+        if (backup2 && !backup1) {
+            showError(el, 'Please specify Backup Airline 1 before Backup Airline 2.');
+            return;
+        }
+        if ((backup1 && backup1 === airline) || (backup2 && backup2 === airline) ||
+            (backup1 && backup2 && backup1 === backup2)) {
+            showError(el, 'Airline codes must be unique — no duplicates between primary and backup airlines.');
+            return;
+        }
     }
 
     showLoading(el);
 
-    let url = `/api/routes?src=${src}&dst=${dst}&airline=${airline}&stops=${stopsNum}`;
+    const exact = stopMode === 'exact';
+    let url = `/api/routes?src=${src}&dst=${dst}&stops=${stopsNum}&count=${countNum}`;
+    if (airline) url += `&airline=${airline}`;
     if (backup1) url += `&backup1=${backup1}`;
     if (backup2) url += `&backup2=${backup2}`;
+    if (exact) url += `&exact=true`;
 
     const { data } = await api('GET', url);
     if (data.error) { showError(el, data.error); return; }
@@ -541,8 +566,11 @@ async function searchRoutes() {
 
     routesMap.fitBounds(allPoints, { padding: [40, 40] });
 
+    const modeLabel = data.exactStops ? 'exactly' : 'up to';
+    const airlineLabel = data.anyAirline ? 'any airline' :
+        data.airlines.map(a => `${a.name} (${a.iata})`).join(', ');
     let summary = `<h4 style="color:var(--accent);margin:.75rem 0">${data.source.iata} &#10230; ${data.destination.iata} — ${data.totalRoutes} optimal route(s) found</h4>`;
-    summary += `<div class="routes-meta">Direct distance: <strong>${data.directDistance.toLocaleString()} mi</strong></div>`;
+    summary += `<div class="routes-meta">Direct distance: <strong>${data.directDistance.toLocaleString()} mi</strong> · ${modeLabel} ${data.maxStopsUsed} stop(s) · ${airlineLabel}</div>`;
 
     summary += '<div class="top-intermediates"><strong>Routes (by total distance):</strong><ol>';
     data.routes.forEach((route, i) => {

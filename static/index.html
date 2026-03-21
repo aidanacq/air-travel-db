@@ -239,7 +239,7 @@
         <section id="tab-routes" class="tab-content">
             <div class="section-header">
                 <h2>Optimal Route Finder</h2>
-                <p>Find the top 5 shortest paths between two airports using your preferred airline(s)</p>
+                <p>Find the shortest paths between two airports using your preferred airline(s)</p>
             </div>
             <div class="card">
                 <div class="routes-form">
@@ -255,6 +255,12 @@
                         </div>
                     </div>
                     <div class="routes-row">
+                        <label class="checkbox-label routes-checkbox">
+                            <input type="checkbox" id="routes-any-airline" onchange="toggleAnyAirline()">
+                            Any Airline (no preference)
+                        </label>
+                    </div>
+                    <div class="routes-row" id="routes-airline-row">
                         <div class="routes-field">
                             <label for="routes-airline">Primary Airline *</label>
                             <input type="text" id="routes-airline" placeholder="IATA (e.g. UA)" maxlength="3">
@@ -270,8 +276,19 @@
                     </div>
                     <div class="routes-row">
                         <div class="routes-field">
-                            <label for="routes-stops">Max Stops (0–5)</label>
+                            <label for="routes-stops">Stops (0–5)</label>
                             <input type="number" id="routes-stops" placeholder="0" min="0" max="5" value="0">
+                        </div>
+                        <div class="routes-field">
+                            <label for="routes-stop-mode">Stop Mode</label>
+                            <select id="routes-stop-mode">
+                                <option value="max">At most</option>
+                                <option value="exact">Exactly</option>
+                            </select>
+                        </div>
+                        <div class="routes-field">
+                            <label for="routes-count">Routes to Find (1–10)</label>
+                            <input type="number" id="routes-count" min="1" max="10" value="5">
                         </div>
                         <button onclick="searchRoutes()">Find Optimal Routes</button>
                     </div>

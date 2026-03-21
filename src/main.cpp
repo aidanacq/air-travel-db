@@ -260,10 +260,12 @@ int main() {
         auto backup1 = req.get_param_value("backup1");
         auto backup2 = req.get_param_value("backup2");
         auto stopsStr = req.get_param_value("stops");
+        auto exactStr = req.get_param_value("exact");
+        auto countStr = req.get_param_value("count");
 
-        if (src.empty() || dst.empty() || airline.empty()) {
+        if (src.empty() || dst.empty()) {
             res.status = 400;
-            res.set_content(json{{"error", "src, dst, and airline parameters are required."}}.dump(), "application/json");
+            res.set_content(json{{"error", "src and dst parameters are required."}}.dump(), "application/json");
             return;
         }
 
@@ -271,8 +273,13 @@ int main() {
         if (!stopsStr.empty()) {
             try { stops = std::stoi(stopsStr); } catch (...) { stops = 0; }
         }
+        bool exact = (exactStr == "true" || exactStr == "1");
+        int count = 5;
+        if (!countStr.empty()) {
+            try { count = std::stoi(countStr); } catch (...) { count = 5; }
+        }
 
-        auto result = db.findRoutes(src, dst, airline, backup1, backup2, stops);
+        auto result = db.findRoutes(src, dst, airline, backup1, backup2, stops, exact, count);
         res.status = result.contains("error") ? 400 : 200;
         res.set_content(result.dump(), "application/json");
     });

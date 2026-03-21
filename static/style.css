@@ -442,8 +442,9 @@ button:active { transform: translateY(0); }
     text-transform: uppercase;
     letter-spacing: .03em;
 }
-.routes-field input { margin-bottom: 0; }
+.routes-field input, .routes-field select { margin-bottom: 0; }
 .routes-arrow { align-self: center; margin-top: 1.2rem; }
+.routes-checkbox { margin: -.25rem 0; }
 .optional-tag {
     font-size: .65rem;
     font-weight: 400;

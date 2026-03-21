@@ -38,7 +38,7 @@ public:
                     const std::string& airlineIata,
                     const std::string& backupAirline1Iata,
                     const std::string& backupAirline2Iata,
-                    int maxStops);
+                    int maxStops, bool exactStops, int numRoutes);
 
     json getStats();
 
