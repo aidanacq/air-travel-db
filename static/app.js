@@ -90,6 +90,9 @@ document.querySelectorAll('.nav-link').forEach(link => {
         if (tab === 'onehop' && oneHopMap) {
             setTimeout(() => oneHopMap.invalidateSize(), 100);
         }
+        if (tab === 'routes' && routesMap) {
+            setTimeout(() => routesMap.invalidateSize(), 100);
+        }
     });
 });
 
@@ -429,6 +432,161 @@ function renderOneHopPairs(page) {
     el.innerHTML = oneHopSummaryHtml +
         buildTable(['Via IATA', 'Via Airport', 'Airline Leg 1', 'Airline Leg 2', 'Leg 1 (mi)', 'Leg 2 (mi)', 'Total (mi)'], rows, [4, 5, 6]) +
         paginationHtml(pg, 'renderOneHopPairs');
+}
+
+// ── Routes ───────────────────────────────────────────────────────────────────
+
+let routesMap = null;
+let routesMapLayers = [];
+let routesSummaryHtml = '';
+let routesDataCache = null;
+
+const ROUTE_COLORS = ['#58a6ff', '#3fb950', '#e3b341', '#f85149', '#bc8cff'];
+
+function initRoutesMap() {
+    if (routesMap) return;
+    const container = document.getElementById('routes-map');
+    container.classList.add('visible');
+    routesMap = L.map(container).setView([30, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 18
+    }).addTo(routesMap);
+}
+
+function clearRoutesMapLayers() {
+    routesMapLayers.forEach(l => routesMap.removeLayer(l));
+    routesMapLayers = [];
+}
+
+async function searchRoutes() {
+    const src = document.getElementById('routes-src').value.trim().toUpperCase();
+    const dst = document.getElementById('routes-dst').value.trim().toUpperCase();
+    const airline = document.getElementById('routes-airline').value.trim().toUpperCase();
+    const backup1 = document.getElementById('routes-backup1').value.trim().toUpperCase();
+    const backup2 = document.getElementById('routes-backup2').value.trim().toUpperCase();
+    const stops = document.getElementById('routes-stops').value || '0';
+    const el = document.getElementById('routes-result');
+
+    if (!src || !dst) { showError(el, 'Enter both source and destination airport IATA codes.'); return; }
+    if (!airline) { showError(el, 'Enter a primary airline IATA code.'); return; }
+
+    const stopsNum = parseInt(stops);
+    if (isNaN(stopsNum) || stopsNum < 0 || stopsNum > 5) {
+        showError(el, 'Number of stops must be between 0 and 5.');
+        return;
+    }
+
+    if (src === dst) { showError(el, 'Source and destination airports must be different.'); return; }
+
+    if (backup2 && !backup1) {
+        showError(el, 'Please specify Backup Airline 1 before Backup Airline 2.');
+        return;
+    }
+
+    if ((backup1 && backup1 === airline) || (backup2 && backup2 === airline) ||
+        (backup1 && backup2 && backup1 === backup2)) {
+        showError(el, 'Airline codes must be unique — no duplicates between primary and backup airlines.');
+        return;
+    }
+
+    showLoading(el);
+
+    let url = `/api/routes?src=${src}&dst=${dst}&airline=${airline}&stops=${stopsNum}`;
+    if (backup1) url += `&backup1=${backup1}`;
+    if (backup2) url += `&backup2=${backup2}`;
+
+    const { data } = await api('GET', url);
+    if (data.error) { showError(el, data.error); return; }
+
+    initRoutesMap();
+    clearRoutesMapLayers();
+
+    const srcPos = [data.source.latitude, data.source.longitude];
+    const dstPos = [data.destination.latitude, data.destination.longitude];
+
+    const srcMarker = L.marker(srcPos).addTo(routesMap)
+        .bindPopup(`<b>${data.source.iata}</b><br>${data.source.name}`);
+    const dstMarker = L.marker(dstPos).addTo(routesMap)
+        .bindPopup(`<b>${data.destination.iata}</b><br>${data.destination.name}`);
+    routesMapLayers.push(srcMarker, dstMarker);
+
+    const allPoints = [srcPos, dstPos];
+    const seenIntermediates = new Set();
+
+    data.routes.forEach((route, i) => {
+        const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+        route.legs.forEach(leg => {
+            const from = [leg.fromLat, leg.fromLon];
+            const to = [leg.toLat, leg.toLon];
+            const line = L.polyline([from, to], {
+                color, weight: 2.5, opacity: 0.7, dashArray: '6 4'
+            }).addTo(routesMap);
+            routesMapLayers.push(line);
+        });
+
+        for (let a = 1; a < route.airports.length - 1; a++) {
+            const ap = route.airports[a];
+            const key = ap.iata;
+            if (seenIntermediates.has(key)) continue;
+            seenIntermediates.add(key);
+            const pos = [ap.latitude, ap.longitude];
+            allPoints.push(pos);
+            const circle = L.circleMarker(pos, {
+                radius: 7, color, fillColor: color, fillOpacity: 0.7
+            }).addTo(routesMap).bindPopup(`<b>${ap.iata}</b><br>${ap.name}<br>${ap.city}, ${ap.country}`);
+            routesMapLayers.push(circle);
+        }
+    });
+
+    routesMap.fitBounds(allPoints, { padding: [40, 40] });
+
+    let summary = `<h4 style="color:var(--accent);margin:.75rem 0">${data.source.iata} &#10230; ${data.destination.iata} — ${data.totalRoutes} optimal route(s) found</h4>`;
+    summary += `<div class="routes-meta">Direct distance: <strong>${data.directDistance.toLocaleString()} mi</strong></div>`;
+
+    summary += '<div class="top-intermediates"><strong>Routes (by total distance):</strong><ol>';
+    data.routes.forEach((route, i) => {
+        const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+        const pathStr = route.airports.map(a => a.iata).join(' → ');
+        const airlineStr = route.legs.map(l => l.airlineIata).join(', ');
+        summary += `<li><span class="color-dot" style="background:${color}"></span>` +
+            `<strong>${pathStr}</strong> — ${route.totalDistance.toLocaleString()} mi ` +
+            `(${route.stops} stop${route.stops !== 1 ? 's' : ''}, via ${airlineStr})</li>`;
+    });
+    summary += '</ol></div>';
+
+    routesSummaryHtml = summary;
+    routesDataCache = data.routes;
+    renderRouteDetails();
+}
+
+function renderRouteDetails() {
+    const el = document.getElementById('routes-result');
+    let html = routesSummaryHtml;
+
+    html += '<div class="routes-detail-list">';
+    routesDataCache.forEach((route, i) => {
+        const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+        html += `<div class="route-detail-card" style="border-left: 3px solid ${color}">`;
+        html += `<h4 style="color:${color}">Route #${route.rank}: ${route.airports.map(a => a.iata).join(' → ')}</h4>`;
+        html += `<div class="route-stats">` +
+            `<span>Total: <strong>${route.totalDistance.toLocaleString()} mi</strong></span>` +
+            `<span>Stops: <strong>${route.stops}</strong></span></div>`;
+
+        const headers = ['Leg', 'From', 'To', 'Airline', 'Distance'];
+        const rows = route.legs.map((leg, l) => [
+            `${l + 1}`,
+            `${leg.fromIata} — ${leg.fromName}`,
+            `${leg.toIata} — ${leg.toName}`,
+            `${leg.airlineName} (${leg.airlineIata})`,
+            `${leg.distance.toLocaleString()} mi`
+        ]);
+        html += buildTable(headers, rows, [0, 4]);
+        html += '</div>';
+    });
+    html += '</div>';
+
+    el.innerHTML = html;
 }
 
 // ── Code ─────────────────────────────────────────────────────────────────────

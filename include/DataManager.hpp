@@ -34,6 +34,12 @@ public:
 
     json oneHopReport(const std::string& sourceIata, const std::string& destIata);
 
+    json findRoutes(const std::string& srcIata, const std::string& dstIata,
+                    const std::string& airlineIata,
+                    const std::string& backupAirline1Iata,
+                    const std::string& backupAirline2Iata,
+                    int maxStops);
+
     json getStats();
 
 private:

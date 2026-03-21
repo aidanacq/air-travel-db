@@ -419,6 +419,62 @@ button:active { transform: translateY(0); }
 }
 .leaflet-popup-tip { background: var(--bg-secondary) !important; }
 
+/* ── Routes ─────────────────────────────────── */
+
+.routes-form { display: flex; flex-direction: column; gap: 1rem; }
+.routes-row {
+    display: flex;
+    gap: .75rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+.routes-field {
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+    flex: 1;
+    min-width: 140px;
+}
+.routes-field label {
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+.routes-field input { margin-bottom: 0; }
+.routes-arrow { align-self: center; margin-top: 1.2rem; }
+.optional-tag {
+    font-size: .65rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    text-transform: lowercase;
+    letter-spacing: 0;
+    margin-left: .3rem;
+    opacity: .7;
+}
+.routes-meta {
+    font-size: .9rem;
+    color: var(--text-muted);
+    margin-bottom: .75rem;
+}
+.routes-detail-list { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
+.route-detail-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+}
+.route-detail-card h4 { margin-bottom: .5rem; font-size: 1rem; }
+.route-stats {
+    display: flex;
+    gap: 1.5rem;
+    font-size: .85rem;
+    color: var(--text-muted);
+    margin-bottom: .75rem;
+}
+.route-stats strong { color: var(--text-bright); }
+
 /* ── Code Viewer ────────────────────────────── */
 
 .code-container { margin-top: 1rem; }

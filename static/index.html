@@ -21,6 +21,7 @@
             <a href="#" class="nav-link" data-tab="reports">Reports</a>
             <a href="#" class="nav-link" data-tab="manage">Manage</a>
             <a href="#" class="nav-link" data-tab="onehop">One-Hop</a>
+            <a href="#" class="nav-link" data-tab="routes">Routes</a>
             <a href="#" class="nav-link" data-tab="code">Code</a>
             <a href="#" class="nav-link" data-tab="about">About</a>
         </div>
@@ -232,6 +233,52 @@
             </div>
             <div id="onehop-map" class="map-container"></div>
             <div id="onehop-result" class="result-box"></div>
+        </section>
+
+        <!-- ── Routes ─────────────────────────────────────── -->
+        <section id="tab-routes" class="tab-content">
+            <div class="section-header">
+                <h2>Optimal Route Finder</h2>
+                <p>Find the top 5 shortest paths between two airports using your preferred airline(s)</p>
+            </div>
+            <div class="card">
+                <div class="routes-form">
+                    <div class="routes-row">
+                        <div class="routes-field">
+                            <label for="routes-src">Source Airport</label>
+                            <input type="text" id="routes-src" placeholder="IATA (e.g. SFO)" maxlength="4">
+                        </div>
+                        <span class="arrow routes-arrow">&#10230;</span>
+                        <div class="routes-field">
+                            <label for="routes-dst">Destination Airport</label>
+                            <input type="text" id="routes-dst" placeholder="IATA (e.g. LHR)" maxlength="4">
+                        </div>
+                    </div>
+                    <div class="routes-row">
+                        <div class="routes-field">
+                            <label for="routes-airline">Primary Airline *</label>
+                            <input type="text" id="routes-airline" placeholder="IATA (e.g. UA)" maxlength="3">
+                        </div>
+                        <div class="routes-field">
+                            <label for="routes-backup1">Backup Airline 1 <span class="optional-tag">optional</span></label>
+                            <input type="text" id="routes-backup1" placeholder="IATA (e.g. AA)" maxlength="3">
+                        </div>
+                        <div class="routes-field">
+                            <label for="routes-backup2">Backup Airline 2 <span class="optional-tag">optional</span></label>
+                            <input type="text" id="routes-backup2" placeholder="IATA (e.g. DL)" maxlength="3">
+                        </div>
+                    </div>
+                    <div class="routes-row">
+                        <div class="routes-field">
+                            <label for="routes-stops">Max Stops (0–5)</label>
+                            <input type="number" id="routes-stops" placeholder="0" min="0" max="5" value="0">
+                        </div>
+                        <button onclick="searchRoutes()">Find Optimal Routes</button>
+                    </div>
+                </div>
+            </div>
+            <div id="routes-map" class="map-container"></div>
+            <div id="routes-result" class="result-box"></div>
         </section>
 
         <!-- ── Code ────────────────────────────────────────── -->
